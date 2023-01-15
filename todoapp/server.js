@@ -3,7 +3,9 @@ const app = express(); // 이해할 필요는 없다 그냥 express 라이브러
 const bodyparser = require("body-parser");
 const methodOverride=require('method-override')
 const crypto=require("crypto")
-
+const http=require('http').createServer(app)
+const {Server}=require('socket.io')
+const io = new Server(http) 
 let multer=require('multer')
 
 var storage=multer.diskStorage({
@@ -40,7 +42,7 @@ MongoClient.connect(
     db=client.db('todoapp')
     // 서버는 암기가 중요하다 이해하려 하지말자 서버코드 이해하려고 하지마셈
 
-    app.listen(8080, function () {
+    http.listen(8080, function () {
       /// 8080 서버띄울 포트 번호 function 띄운 후 실행할 코드  6만개의 포트중 8080으로 들어온
 
       console.log("listening on 8080"); //애들은 함수 실행
@@ -82,8 +84,7 @@ app.get("/", (요청, 응답) => {
 
 app.get("/list", function (요청, 응답) {
   db.collection('post').find().toArray(function(에러,결과){
-    console.log(결과);
-    응답.render("list.ejs",{ posts : 결과});
+    응답.render("list.ejs",{ posts : 결과, 아이디 : 요청.user});
 
   });     //어떤 파일명이 post 라는것을 다루겠습니다
 
@@ -91,14 +92,6 @@ app.get("/list", function (요청, 응답) {
 
 });
 
-app.delete('/delete', function(요청, 응답){
-  console.log(요청.body)
-  요청.body._id=parseInt(요청.body._id)
-  db.collection('post').deleteOne(요청.body,function(에러, 결과){
-    console.log('삭제완료')
-    응답.status(200).send({messege : '성공했습니다'})
-  })
-})
 
 // detail/글번호로 접속하면 detail.ejs 보여줌
 
@@ -150,6 +143,7 @@ const passport=require('passport')   // 지금에서야 나온건데 이것의 �
 const LocalStrategy=require('passport-local').Strategy
 const session=require('express-session');
 const { render } = require("ejs");
+const { send } = require("process");
 
 app.use(session({
   secret : '비밀코드',
@@ -167,12 +161,13 @@ app.get("/write", 로그인했니, function (요청, 응답) {
 
 function 로그인안했니(요청,응답,next){
   if(요청.user){
-    응답.send('이미 로그인 하셨어요')
+    응답.render('already_login.ejs')
   }
   else{
     next()
   }
 }
+
 // app.use 나는 미들웨어를 쓰겠습니다 라는 뜻
 app.get('/login', 로그인안했니,function(요청, 응답){     // 어떤 사람이 
   응답.render('login.ejs')
@@ -201,6 +196,7 @@ function 로그인했니(요청,응답,next){
     응답.send('로그인 안하셨는데요?')
   }
 }
+
 
 passport.use(new LocalStrategy({
   usernameField: 'id',   // 폼에 id
@@ -233,9 +229,30 @@ passport.deserializeUser(function(아이디,done){    // 여기있는  '아이�
   })
 })
 
+// 삭제  // list.ejs
+app.delete('/delete', 로그인했니,function(요청, 응답){
+  console.log(요청.body)
+  // 요청.body._id는 글번호
+  요청.body._id=parseInt(요청.body._id)
+  console.log(요청.user)
+  db.collection('post').findOne(요청.body,function(에러,결과){
+    if(결과.작성자==요청.user.id){
+      db.collection('post').deleteOne(요청.body,function(에러, 결과){
+        console.log('삭제완료')
+        응답.status(200).send({messege : '성공했습니다'})
+      })
+    }
+    else{
+      응답.status(400).send({message:'실패요 ㅎㅎ'})  //이렇게 해주어야함 이전처럼 응답.send("이런식으로 하면 ㄴㄴ임 ㅎㅎ")
+      
+    }
+  })
+})
+
+
 // 회원가입 만들기
 
-app.get('/register',function(요청,응답){
+app.get('/register',로그인안했니,function(요청,응답){
   응답.render('register.ejs')
 })
 
@@ -356,25 +373,144 @@ app.get('/image/:imagename', function(요청,응답){
 // 어떤 부모게시물에 달린 댓글인지, 즉 종속관계 명확하게 명시해주어야함 
 // 게시물간의 종속관계를 표현해주고 싶을때, 부모정보까지 저장해두면 된다.
 
-app.get('/chat/:id', function(요청,응답){
+app.get('/chat/:id', 로그인했니,function(요청,응답){
   // 여기서 가져오는 거야
-  응답.render('chat.ejs',{채팅방번호 : 요청.params.id})
+  응답.render('chat_detail.ejs',{채팅방번호 : 요청.params.id})
 })
 
-app.post('/chat/:id', function(요청,응답){
+app.get('/chat',로그인했니,function(요청,응답){
+  // 현재 내가 속해있는 채팅방들 목록을 보여준다
+  console.log(요청.user.id)
+
+  db.collection('chatroom').find({member:요청.user.id}).toArray(function(에러,결과){
+
+    접속한아이디=요청.user.id
+
+    응답.render('chat.ejs',{접속한아이디: 요청.user.id, posts: 결과})  
+  })
+})
+
+app.post('/chat/:id',로그인했니,function(요청,응답){
   게시글번호=요청.params.id
   db.collection('post').findOne({_id : parseInt(요청.params.id)}, function(에러,결과){
+    글작성자=결과.작성자
     var 저장할거={
       member: [결과.작성자, 요청.user.id],
       date: new Date(),
       title : 요청.params.id
     }
-      db.collection("chatroom").insertOne(저장할거, function(에러,결과){
+    // 중복된 데이터가 있으면 채팅창 리스트에 추가로 넣으면 안되고, 이동을 시켜줄거야
+      db.collection("chatroom").findOne({member : 저장할거.member},function(에러,결과){
+        console.log(글작성자, 요청.user.id)
+        if(글작성자==요청.user.id){
+          응답.redirect('/chat')
+        }
+        else if(결과==null){
+          db.collection("chatroom").insertOne(저장할거, function(에러,결과){
+            console.log('채팅방 개설 완료!')
+            응답.redirect('/chat')
+          })
+        }
+        else{
+          console.log("채팅방 이미있음")
+          응답.redirect('/chat')
+        }
+      })
+  })
+})
 
-    })
+app.post('/message',로그인했니,function(요청, 응답){
+  var 저장할거={
+    parent: 요청.body.parent,
+    content:요청.body.content,
+    sender : 요청.user.id,
+    date: new Date()
+  }
+  db.collection('message').insertOne(저장할거,function(에러,결과){
+  })
+  // console.log(저장할거)    // 여기의 요청.body 는 ejs 파일에서 ajax 로 전덜해준 데이터를 의미한다
+})
+
+// 실시간으로 채팅 구현하는 방법은 크게 두가지가 있다
+// 1. 계속 get 요청 날리는 방법 근데 이거 사용자 많아지면 매우 비효율적
+// 2. 
+
+app.get('/message/:id', 로그인했니, function(요청,응답){
+  응답.writeHead(200,{
+    "Connection" : "keep-alive",
+    "Content-Type" : "text/event-stream",
+    "Cache-Control" : "no-cache",
+  })
+
+  db.collection('message').find({ parent:요청.params.id}).toArray().then((결과)=>{  //then의 의미는 앞서 진행한 것들이 성공 하면~~? 이라는 의미
+    응답.write('event: test\n'); //유저에게 데이터 전송은 event:보낼데이터 이름
+    응답.write('data:'+ JSON.stringify(결과) +'\n\n'); // data:보낼데이터    // 서버에서 실시간 전송시 문자 자료만 가능 위에 .toarray로 인해 배열로 전달돼서 깨질거임
+    // json 자료로 바꿔준다.
+  })
+
+  // 실시간으로 서버에 데이터 전송하는 법
+  // 이제 /어쩌구로 get 요청하면 실시간 채널 오픈됩니다
+  // 서버와 유저간 실시간 소통채널 열기
+  // 일반적인 get post 방식은 한번 요청시 한번 응답 그러나
+  // 위에 형식 처럼 하면 여러번 응답이 가능해진다
+
+  // 헤더라는것이 무엇인가?
+  // http 요청시 몰래 전달되는 정보들이 담겨있는 부분이 바로 헤더이다
+
+  // 채팅방에서 엔터를 눌러도 바로바로 프론트로 보이지 않음
+ // 오늘 그거 구현할거임 
+ // db 가 업데이트 되면 유저에게 쏴주세요~~
+ // 근데 db는 수동적이라 그런거 잘 못함--> 몽고디비 체인지 스트림 쓰면 가능해짐 이걸쓰면 디비 변동시 서버에 알려줌 유저에게 보낼 수 있음
+
+  const pipeline = [
+    { $match: { 'fullDocument.parent': 요청.params.id } } // 컬렉션 안에 원하는 document만 감시할지 정하는 것 //부모가 params.id 인것만 감시
+  ];
+  const collection=db.collection('message')
+  const changeStream=collection.watch(pipeline)  // watch 함수가 감시하는 거임
+  changeStream.on('change',(result)=>{
+    응답.write('event: test\n')                     // 시발 이게 문제였네 이거 하나때문에 계속 갱신 안되고 새로고침 존나했네 씨발련 진짜 아;
+    응답.write(`data: ${JSON.stringify([result.fullDocument])}\n\n`); // db에 변동이 생기면 응답해주세요 
+  })
+})
+
+
+// 자기가 쓴글만 삭제할 수 있도록 바꾸장 ㅎㅎ
+// 글이 삭제되더라도 채팅 내용은 안삭제되게 냅두는게 맞다 ㅇㅇ
+
+
+
+//웹소켓이라는 것을 쓰면 서버 유저와 실시간 소통이 가능하다
+// 웹소켓이라는 것은 유저가 보는 html 파일에도 소켓을 세팅해놓아야 한다
+app.get('/socket',function(요청,응답){
+  응답.render('socket.ejs')
+})
+
+io.on('connection', function(socket){   // 여기 socket에는 유저의 정보가 담겨있음
+  // 어떤 사람이 웹소켓에 접속하면 실행해달라는 함수임
+  console.log('유저 접속함')
+  // socket.id 이게 접속한 유저의 uniq한 소켓 아이디
+  socket.on('joinroom', function(data){
+    socket.join('room1')
+    // joinroom 이라는 메세지를 받으면 room1에 입장시켜줘~ 라는 뜻 
+    // 이 유저는 이제 room1에서만 채팅을 할 수 있음 
 
   })
-  console.log('채팅방 개설 완료!')
-  응답.redirect('/chat/'+게시글번호)
+  socket.on('room1-send', function(data){
+    io.emit('broadcast', data)  // 이건 모든 유저에게 브로드캐스트 해주는것 
+    io.to('room1').emit('broadcast', data) // room1에 들어간 유저에게만 메세지 
+    // 이것의 실행 결과는 다음과 같음
+    // user1 과 user2가 각각 있다고 가정할때 user1은 채팅방1입장 버튼을 누르고 user2는 안눌렀을때 
+    // user1이 채팅방1에서 메세지 보내기 누름녀 user2에게 메세지 안들어감
+  })
+// 서버가 수신하는 코드
+socket.on('user-send',function(data){  // 유저가 보낸 메세지가 data   유저가 보낸 메세지 수신
+  // 누가 user-send라는 이름으로 메세지 보내면 실행해주세요 라는 함수임
+  io.emit('broadcast',data)   //유저에게 서버가 메세지 전송  io.emit은 모든 유저에게 메세지 보낸다 
+  // io.to(socket.id).emit('broadcast',data)   //지금 접속한 유저에게만 메세지 보낼 수 있음
+
 })
-  
+})
+
+// 서버가 수신하는 코드
+
+// 혼자할거는 1ㄷ1채팅 서비스 만들기 
