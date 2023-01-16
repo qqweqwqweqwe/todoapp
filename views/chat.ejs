@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />    
+
+    <!-- css파일 두개 적용하는법 그냥 쓰면 됨 -->
+    <link
+      rel="stylesheet"
+      href="../public/main.css"
+    />
+    <!-- Bootstrap CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css"
+      integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+      crossorigin="anonymous"
+    />
+
+    <title>Hello, world!</title>
+  </head>
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <body>
+    <%- include('nav.html') %>/
+    
+
+
+    <h4 class="ml-2 my-3 text-center"> <%= 접속한아이디 %> 채팅방</h4>
+    <div id="cur-user" style="display: none;" ><%= 접속한아이디 %></div>
+
+    <!-- form 에서 서버로 데이터 전송할때 post 요청을 사용한다고 하였는데 get 요청으로도 서버에 전송 가능하다 -->
+    <!--  url ?데이터이름=전달할데이터     -->
+
+    <div class="container p-4 detail">
+
+      <div class="row">
+        <div class="col-3">
+           <ul class="list-group chat-list">
+            <% for (var i =0; i<posts.length; i++ ){ %>   
+              <li class="list-group-item" data-id="<%= posts[i].title %>">   
+                <a href="/detail/<%= posts[i].title %>"><h6>원본 글 번호 : <%= posts[i].title %></h6></a>
+                <% if (posts[i].member[1]==접속한아이디) { %> <h4 class="text-small"> 대화 상대 : <%= posts[i].member[0] %></h4> <% } %>
+                <% if (posts[i].member[0]==접속한아이디) { %> <h4 class="text-small"> 대화 상대 : <%= posts[i].member[1] %></h4> <% } %>
+
+                <!-- <h6 class="text-small" >글 작성자 : <%= posts[i].member[0] %></h6> -->
+                <!-- <h6 class="text-small">대화 상대 : <%= posts[i].member[1] %></h6> -->
+                <!-- 태그 중복 가능 -->
+              </li>
+              <% } %>
+           </ul>
+         </div>
+    
+         <div class="col-9 p-0">
+           <div class="chat-room">
+              <ul class="list-group chat-content" id="chat-content-list"> 
+                <!-- <li><span class="chat-box">채팅방1 내용</span></li> -->
+                <!-- <li><span class="chat-box">채팅방1 내용</span></li> -->
+                <!-- <li><span class="chat-box mine">채팅방1 내용</span></li> -->
+                </ul>
+             
+              <div class="input-group">
+                <input class="form-control" id="chat-input">
+                <button class="btn btn-secondary" id="send" >전송</button>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    
+    </div> 
+
+    <script>
+      var 지금누른채팅방아이디;
+      var eventsource
+      $('.list-group-item').click(function(){   // 채팅방 누르면 채팅채널 입장 
+        지금누른채팅방아이디=this.dataset.id
+        if(eventsource!=undefined){
+        eventsource.close()
+        $('#chat-content-list').html('')  // jqeury 내에서 특정 html을 비워주세요 라는 코드임 이거 진짜 개꿀팁이네 ㅋㅋ 새로고침 할 필요가 없었음
+        } // 이벤트창이 열려있으면 닫아주세요 
+
+        eventsource=new EventSource('/message/'+지금누른채팅방아이디)   // 유저가 데이터 수신은 new eventsource 이 코드가 실행 되면 서버랑 실시간으로 소통 하는 거임 ㅎㅎ 
+        eventsource.addEventListener('test', function(e){  // 서버에서 작명한 이벤트 
+          // 서버에서 보낸 데이터 json.parse 는 json을 다시 보기좋게 바꿔줌 
+          // 서버에서 받은 채팅 메세지들을 html 로 보여주셈 숙제임 // html을 생성하셈 //js 로 html 생성하는거 구글링 쳐하셈 씨발아 ㅋㅋ
+          // 왼쪽 채팅방을 누르면 뜨게끔!
+          var obj=JSON.parse(e.data)
+
+      
+          // obj.forEach(function(i) {} 이것도 알아두자 이게 어레이 속성의 각 원소들 마다 실행시켜주는 함수 각각의 데이터가 i임
+            
+          
+          for(var i=0;  i<obj.length; i++){
+            var chat
+            var curuser=document.getElementById('cur-user').textContent
+
+            if(obj[i].sender!=curuser){
+             chat= `<li><span class="chat-box">${obj[i].content}</span></li>`
+            }
+            else{
+             chat=`<li><span class="chat-box mine">${obj[i].content}</span></li>`
+            }
+            $('#chat-content-list').append(chat)
+          }
+
+        })
+      })
+    </script>
+
+
+    <script>
+      $('#send').click(function(e){
+        // 내용, 보내는 새끼 아이디, 날짜, 글번호 , 받는 새끼 아이디,
+        var 채팅방=지금누른채팅방아이디
+        var 채팅내용=$('#chat-input').val()
+        var 보낼거={
+          parent:채팅방,
+          content:채팅내용
+        }
+        document.getElementById("chat-input").value ='';
+        $.post('/message', 보낼거,function(){
+          console.log('전송완료')
+        })
+      })
+
+    </script>
+        
+
+
+
+
+
+
+
+
+
+    <!-- ajax 는 js로 서버랑 통신하려고 쓰는 자바스크립트 문법 -->
+
+    <!-- 새로고침 없어도 서버랑 통신 가능 그게 ㅈㄴ 장점 -->
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+      integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+      crossorigin="anonymous"
+    ></script>
+    
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/js/bootstrap.min.js"
+      integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+      crossorigin="anonymous"
+    ></script>
+    
+  </body>
+
+</html>
