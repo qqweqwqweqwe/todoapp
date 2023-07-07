@@ -1,3 +1,5 @@
+// http://localhost:8080/  항상 여기로 접속하세용
+
 const express = require("express"); // 아까 설치한 라이브러리를 첨부해주세요
 const app = express(); // 이해할 필요는 없다 그냥 express 라이브러리 사용법임   // import 로 하면 안됨
 const bodyparser = require("body-parser");
@@ -7,6 +9,8 @@ const http=require('http').createServer(app)
 const {Server}=require('socket.io')
 const io = new Server(http) 
 let multer=require('multer')
+var cookieParser = require('cookie-parser');
+
 
 var storage=multer.diskStorage({
   destination:function(req,file,cb){
@@ -23,6 +27,8 @@ var storage=multer.diskStorage({
 app.use(bodyparser.urlencoded({ extended: true }));
 app.use(methodOverride('_method'))
 app.set('view engine', 'ejs')
+app.use(cookieParser());
+
 
 function createhashpassword(password){   // 문자열 형태로 넣어줘야함
   return crypto.createHash("sha512").update(password).digest('base64')
@@ -193,7 +199,7 @@ function 로그인했니(요청,응답,next){
     
   }
   else{
-    응답.send('로그인 안하셨는데요?')
+    응답.redirect('/login')
   }
 }
 
@@ -207,7 +213,6 @@ passport.use(new LocalStrategy({
   console.log(입력한아이디, 입력한비번);
   db.collection('login').findOne({ id: 입력한아이디 }, function (에러, 결과) {
     if (에러) return done(에러)
-
     if (!결과) return done(null, false, { message: '존재하지않는 아이디요' }) // 결과에 아무것도 없을 때 
     if (입력한비번 == 결과.pw) {
       return done(null, 결과)
@@ -474,6 +479,8 @@ app.get('/message/:id', 로그인했니, function(요청,응답){
 })
 
 
+
+
 // 자기가 쓴글만 삭제할 수 있도록 바꾸장 ㅎㅎ
 // 글이 삭제되더라도 채팅 내용은 안삭제되게 냅두는게 맞다 ㅇㅇ
 
@@ -514,3 +521,18 @@ socket.on('user-send',function(data){  // 유저가 보낸 메세지가 data   �
 // 서버가 수신하는 코드
 
 // 혼자할거는 1ㄷ1채팅 서비스 만들기 
+
+
+
+
+
+// 로그 아웃
+// 로그아웃 시켜줄 뿐 만 아니라, 사이트 내에 존재하는 쿠키 또한 삭제해줌
+
+app.get('/logout', function (요청, 응답){
+  요청.session.destroy(function (err) {
+    응답.clearCookie('connect.sid');
+    응답.redirect('/'); //Inside a callback… bulletproof!
+  });
+});
+
